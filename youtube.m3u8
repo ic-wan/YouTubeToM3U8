@@ -1,8 +1,9 @@
 #EXTM3U
 
-#EXTINF:-1 tvg-id="tvone.id" tvg-name="TVOne" group-title="News", TVOne Live
-https://live.tvonenews.com/live/tvone/index.m3u8
-
+#EXTINF:-1 tvg-id="tvone" tvg-name="tvOne" group-title="News", tvOne
+#EXTVLCOPT:http-referrer=https://www.dens.tv/
+#EXTVLCOPT:http-user-agent=Mozilla/5.0
+https://rr.dens.tv/h/h08/index2.m3u8
 
 
 #EXTINF:-1 tvg-id="Chillhop.yt" tvg-name="Chillhop Music (jazzy & lofi hip hop beats)" group-title="Music", Chillhop Music (jazzy & lofi hip hop beats)
