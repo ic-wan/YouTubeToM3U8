@@ -13,7 +13,8 @@ jobs:
   runCode:
 
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: read # Tambahkan baris ini
     steps:
       - uses: actions/checkout@v4
 
