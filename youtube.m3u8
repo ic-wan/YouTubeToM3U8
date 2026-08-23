@@ -1,11 +1,9 @@
 #EXTM3U
 
-#EXTINF:-1 tvg-id="tvone.yt" tvg-name="Tvone live" group-title="News", Tvone live
-https://youtube-live-to-m3u8.vercel.app/api/yt?id=1oh9IEwBbFY
+#EXTINF:-1 tvg-id="tvone.id" tvg-name="TVOne" group-title="News", TVOne Live
+https://live.tvonenews.com/live/tvone/index.m3u8
 
 
-#EXTINF:-1 tvg-id="tvone.yt" tvg-name="Tvone live" group-title="News", Tvone live
-https://www.youtube.com/watch?v=1oh9IEwBbFY
 
 #EXTINF:-1 tvg-id="Chillhop.yt" tvg-name="Chillhop Music (jazzy & lofi hip hop beats)" group-title="Music", Chillhop Music (jazzy & lofi hip hop beats)
 https://www.youtube.com/watch?v=1oh9IEwBbFY
