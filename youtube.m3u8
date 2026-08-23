@@ -1,5 +1,26 @@
 #EXTM3U
 
+#EXTINF:-1 tvg-id="metrotv.id" tvg-name="Metro TV" group-title="News", Metro TV
+https://msh-live-playback.v2.metro-tv.nfrn.io/hls/live/metro.m3u8|User-Agent=Mozilla/5.0
+
+#EXTINF:-1 tvg-id="tvri.id" tvg-name="TVRI Nasional" group-title="National", TVRI Nasional
+https://klik.tvri.go.id/live/tvri_nasional/index.m3u8
+
+#EXTINF:-1 tvg-id="tvriworld.id" tvg-name="TVRI World" group-title="National", TVRI World
+https://klik.tvri.go.id/live/tvri_world/index.m3u8
+
+#EXTINF:-1 tvg-id="tvrisport.id" tvg-name="TVRI Sport" group-title="Sports", TVRI Sport
+https://klik.tvri.go.id/live/tvri_sport/index.m3u8
+
+#EXTINF:-1 tvg-id="cbnchannel.id" tvg-name="CBN Channel" group-title="General", CBN Channel
+https://stream.cbn.id/live/cbnchannel/index.m3u8
+
+#EXTINF:-1 tvg-id="sea-today" tvg-name="SEA Today" group-title="News", SEA Today
+https://seatoday-live.akamaized.net/hls/live/2016584/seatoday/master.m3u8
+
+
+
+
 #EXTINF:-1 tvg-id="tvone" tvg-name="tvOne" group-title="Indonesian TV", tvOne Live
 https://rr.dens.tv/h/h08/index2.m3u8|User-Agent=Mozilla/5.0&Referer=https://www.dens.tv/
 
