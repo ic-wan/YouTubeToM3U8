@@ -3,27 +3,30 @@ name: LinkGrabber
 on:
   schedule:
     - cron: '0 */3 * * *'
-
   pull_request:
     branches: [ main ]
-
   workflow_dispatch:
+
 jobs:
-
   runCode:
-
     runs-on: ubuntu-latest
     permissions:
-      contents: read # Tambahkan baris ini
+      contents: write # Ganti dari 'read' ke 'write' agar bisa git push
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Grab Link
-
         run: |
           git config --global user.email "dp247@hll.localhost"
           git config --global user.name "dp247"
           chmod +x exec_grabber.sh && ./exec_grabber.sh
-          git add -A
-          git commit -m "./youtubeLink.txt is updated."
-          git push
+          
+          # Hanya commit dan push jika ada perubahan file
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -m "./youtubeLink.txt is updated."
+            git push
+          else
+            echo "Tidak ada perubahan file, skip push."
+          fi
