@@ -1,101 +1,89 @@
 import sys
+import subprocess
 import re
-import json
 import requests
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Android 14; Mobile; rv:128.0) Gecko/128.0 Firefox/128.0',
-    'Accept-Language': 'en-US,en;q=0.9',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
 }
 
-def get_live_video_id(channel_id):
-    """Mendapatkan Video ID siaran langsung dari Channel ID."""
-    # 1. Cek via Live Embed URL
+def resolve_target_to_videoid(target):
+    """Mengubah Channel ID / Handle / URL menjadi Video ID live yang aktif."""
+    # 1. Jika target sudah berupa Video ID 11 karakter
+    if len(target) == 11 and not target.startswith("http") and not target.startswith("UC"):
+        return target
+
+    # 2. Jika target URL watch
+    if "watch?v=" in target:
+        return target.split("watch?v=")[1].split("&")[0]
+
+    # 3. Kueri via yt-dlp untuk me-resolve URL / Channel ID / Handle ke Video ID
+    url_to_fetch = target
+    if target.startswith("UC"):
+        url_to_fetch = f"https://www.youtube.com/channel/{target}/live"
+    elif target.startswith("@"):
+        url_to_fetch = f"https://www.youtube.com/{target}/live"
+
+    cmd = [
+        "yt-dlp",
+        "--get-id",
+        "--extractor-args", "youtube:player_client=ios,android",
+        "--no-warnings",
+        url_to_fetch
+    ]
     try:
-        url = f"https://www.youtube.com/embed/live_stream?channel={channel_id}"
-        res = requests.get(url, headers=HEADERS, timeout=8)
-        if res.status_code == 200:
-            match = re.search(r'link rel="canonical" href="https://www\.youtube\.com/watch\?v=([^"]+)"', res.text)
-            if match and match.group(1) != channel_id:
-                return match.group(1)
-            # Fallback regex untuk videoId dari HTML script
-            vid_match = re.search(r'"videoId":"([^"]+)"', res.text)
-            if vid_match:
-                return vid_match.group(1)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=12)
+        vid = res.stdout.strip()
+        if len(vid) == 11:
+            return vid
     except Exception:
         pass
 
-    # 2. Cek via RSS Feed Canonical
-    try:
-        rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
-        res = requests.get(rss_url, headers=HEADERS, timeout=8)
-        if res.status_code == 200:
-            matches = re.findall(r'<yt:videoId>([^<]+)</yt:videoId>', res.text)
-            if matches:
-                return matches[0]
-    except Exception:
-        pass
+    # 4. Fallback RSS jika channel ID
+    if target.startswith("UC"):
+        try:
+            rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={target}"
+            res = requests.get(rss_url, headers=HEADERS, timeout=6)
+            if res.status_code == 200:
+                vids = re.findall(r'<yt:videoId>([^<]+)</yt:videoId>', res.text)
+                if vids:
+                    return vids[0]
+        except Exception:
+            pass
 
     return None
 
-def extract_m3u8(video_id):
-    """Mengambil link .m3u8 menggunakan InnerTube API client ANDROID_VR (Lolos IP Block)."""
-    url = "https://www.youtube.com/youtubei/v1/player"
-    
-    # Client ANDROID_VR & TVHTML5 jarang dikenakan rate limit / bot challenge di IP cloud
-    payloads = [
-        {
-            "context": {
-                "client": {
-                    "clientName": "ANDROID_VR",
-                    "clientVersion": "1.56.21",
-                    "deviceModel": "Quest 3"
-                }
-            },
-            "videoId": video_id
-        },
-        {
-            "context": {
-                "client": {
-                    "clientName": "TVHTML5",
-                    "clientVersion": "7.20240815.00.00"
-                }
-            },
-            "videoId": video_id
-        }
+def extract_m3u8_url(video_id):
+    """Mengambil link m3u8 menggunakan yt-dlp client TV/iOS."""
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
+    cmd = [
+        "yt-dlp",
+        "-g",
+        "-f", "best[ext=mp4]/best",
+        "--extractor-args", "youtube:player_client=ios,tv_embedded",
+        "--no-warnings",
+        video_url
     ]
-
-    for payload in payloads:
-        try:
-            res = requests.post(url, json=payload, headers=HEADERS, timeout=10)
-            if res.status_code == 200:
-                data = res.json()
-                streaming_data = data.get("streamingData", {})
-                
-                # Cek manifest m3u8 langsung
-                hls_manifest = streaming_data.get("hlsManifestUrl")
-                if hls_manifest:
-                    return hls_manifest
-        except Exception:
-            continue
-            
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        out = res.stdout.strip()
+        if out:
+            lines = out.splitlines()
+            for line in lines:
+                if "m3u8" in line or "manifest" in line or "googlevideo.com" in line:
+                    return line
+            return lines[0]
+    except Exception:
+        pass
     return None
 
 def process_target(target):
     if ".m3u8" in target and "youtube.com" not in target:
         return target
 
-    video_id = None
-    if target.startswith("UC"):
-        video_id = get_live_video_id(target)
-    elif "watch?v=" in target:
-        video_id = target.split("watch?v=")[1].split("&")[0]
-    elif len(target) == 11 and not target.startswith("http"):
-        video_id = target
-
+    video_id = resolve_target_to_videoid(target)
     if video_id:
-        return extract_m3u8(video_id)
-
+        return extract_m3u8_url(video_id)
     return None
 
 print("#EXTM3U")
