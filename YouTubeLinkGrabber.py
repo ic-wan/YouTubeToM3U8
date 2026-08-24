@@ -1,70 +1,89 @@
 import sys
-import xml.etree.ElementTree as ET
 import requests
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 }
 
-# Daftar instance Invidious publik yang stabil
+# Node API Piped & Invidious Publik (Bypass Blokir IP Datacenter GitHub)
+PIPED_INSTANCES = [
+    "https://pipedapi.kavin.rocks",
+    "https://api.piped.privacydev.net",
+    "https://pipedapi.drg.ng"
+]
+
 INVIDIOUS_INSTANCES = [
     "https://inv.tux.pizza",
     "https://invidious.nerdvpn.de",
-    "https://vid.puffyan.us",
-    "https://invidious.flokinet.to"
+    "https://vid.puffyan.us"
 ]
 
-def get_video_id_from_rss(channel_id):
-    """Mendapatkan Video ID terbaru via RSS Feed YouTube."""
-    rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
-    try:
-        res = requests.get(rss_url, headers=HEADERS, timeout=10)
-        if res.status_code == 200:
-            root = ET.fromstring(res.content)
-            ns = {'yt': 'http://www.youtube.com/xml/xmlns/ns/2015', 'atom': 'http://www.w3.org/2005/Atom'}
-            entries = root.findall('atom:entry', ns)
-            if entries:
-                yt_vid = entries[0].find('yt:videoId', ns)
-                if yt_vid is not None:
-                    return yt_vid.text
-    except Exception:
-        pass
-    return None
-
-def get_hls_from_invidious(video_id):
-    """Mengambil link stream m3u8 langsung via Invidious API."""
-    for instance in INVIDIOUS_INSTANCES:
+def get_live_stream_from_piped(channel_id):
+    """Mendapatkan link stream HLS m3u8 langsung via Piped API."""
+    for instance in PIPED_INSTANCES:
         try:
-            api_url = f"{instance}/api/v1/videos/{video_id}"
-            res = requests.get(api_url, timeout=5)
+            # Fetch detail channel
+            c_url = f"{instance}/channel/{channel_id}"
+            res = requests.get(c_url, headers=HEADERS, timeout=6)
             if res.status_code == 200:
                 data = res.json()
-                # Coba ambil HLS Manifest URL
-                hls_url = data.get("hlsUrl")
-                if hls_url:
-                    return hls_url
+                related_streams = data.get("relatedStreams", [])
                 
-                # Alternate: cari format adaptive yang mengandung m3u8
-                adaptive = data.get("adaptiveFormats", [])
-                for fmt in adaptive:
-                    if "type" in fmt and "m3u8" in fmt["type"]:
-                        return fmt.get("url")
+                # Cari stream yang berstatus LIVE
+                live_video_id = None
+                for stream in related_streams:
+                    if stream.get("isLive", False):
+                        live_video_id = stream.get("url", "").replace("/watch?v=", "")
+                        break
+                
+                # Jika ditemukan video live, ambil manifest hls-nya
+                if live_video_id:
+                    v_url = f"{instance}/streams/{live_video_id}"
+                    v_res = requests.get(v_url, headers=HEADERS, timeout=6)
+                    if v_res.status_code == 200:
+                        v_data = v_res.json()
+                        hls_url = v_data.get("hls")
+                        if hls_url:
+                            return hls_url
+        except Exception:
+            continue
+    return None
+
+def get_live_stream_from_invidious(channel_id):
+    """Fallback ke Invidious API jika Piped API tidak merespons."""
+    for instance in INVIDIOUS_INSTANCES:
+        try:
+            url = f"{instance}/api/v1/channels/{channel_id}/videos"
+            res = requests.get(url, headers=HEADERS, timeout=6)
+            if res.status_code == 200:
+                videos = res.json().get("videos", [])
+                for v in videos:
+                    # Filter khusus video siaran langsung
+                    if v.get("isLive", False):
+                        video_id = v.get("videoId")
+                        v_info = requests.get(f"{instance}/api/v1/videos/{video_id}", timeout=6).json()
+                        hls_url = v_info.get("hlsUrl")
+                        if hls_url:
+                            return hls_url
         except Exception:
             continue
     return None
 
 def process_target(target):
+    # Jika URL langsung berupa .m3u8
     if ".m3u8" in target and "youtube.com" not in target:
         return target
 
-    video_id = None
     if target.startswith("UC"):
-        video_id = get_video_id_from_rss(target)
-    elif "watch?v=" in target:
-        video_id = target.split("watch?v=")[1].split("&")[0]
-
-    if video_id:
-        return get_hls_from_invidious(video_id)
+        # Prioritas 1: Piped API
+        hls_url = get_live_stream_from_piped(target)
+        if hls_url:
+            return hls_url
+            
+        # Prioritas 2: Invidious API Fallback
+        hls_url = get_live_stream_from_invidious(target)
+        if hls_url:
+            return hls_url
 
     return None
 
