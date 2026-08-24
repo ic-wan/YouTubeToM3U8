@@ -1,5 +1,3 @@
 pytz
 requests
-streamlink
-lxml
-beautifulsoup4
+yt-dlp
