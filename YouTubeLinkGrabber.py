@@ -1,90 +1,78 @@
 import sys
-import subprocess
-import re
 import requests
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
 }
 
-def resolve_target_to_videoid(target):
-    """Mengubah Channel ID / Handle / URL menjadi Video ID live yang aktif."""
-    # 1. Jika target sudah berupa Video ID 11 karakter
-    if len(target) == 11 and not target.startswith("http") and not target.startswith("UC"):
-        return target
+# Daftar instance Invidious publik sebagai mirror YouTube
+INVIDIOUS_INSTANCES = [
+    "https://inv.tux.pizza",
+    "https://invidious.nerdvpn.de",
+    "https://inv.hostux.net",
+    "https://yewtu.be",
+    "https://invidious.drgns.space"
+]
 
-    # 2. Jika target URL watch
+def get_hls_from_invidious(target):
+    """Mengambil m3u8 stream dari Invidious API untuk menghindari IP block GitHub Actions."""
+    channel_id = target.strip()
+    
+    # Resolusi jika input berupa URL watch
     if "watch?v=" in target:
-        return target.split("watch?v=")[1].split("&")[0]
+        video_id = target.split("watch?v=")[1].split("&")[0]
+        for instance in INVIDIOUS_INSTANCES:
+            try:
+                url = f"{instance}/api/v1/videos/{video_id}"
+                res = requests.get(url, headers=HEADERS, timeout=6)
+                if res.status_code == 200:
+                    data = res.json()
+                    if data.get("hlsUrl"):
+                        return data["hlsUrl"]
+            except Exception:
+                continue
+        return None
 
-    # 3. Kueri via yt-dlp untuk me-resolve URL / Channel ID / Handle ke Video ID
-    url_to_fetch = target
-    if target.startswith("UC"):
-        url_to_fetch = f"https://www.youtube.com/channel/{target}/live"
-    elif target.startswith("@"):
-        url_to_fetch = f"https://www.youtube.com/{target}/live"
-
-    cmd = [
-        "yt-dlp",
-        "--get-id",
-        "--extractor-args", "youtube:player_client=ios,android",
-        "--no-warnings",
-        url_to_fetch
-    ]
-    try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=12)
-        vid = res.stdout.strip()
-        if len(vid) == 11:
-            return vid
-    except Exception:
-        pass
-
-    # 4. Fallback RSS jika channel ID
-    if target.startswith("UC"):
+    # Jika target berupa Channel ID (UC...) atau Handle (@...)
+    for instance in INVIDIOUS_INSTANCES:
         try:
-            rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={target}"
-            res = requests.get(rss_url, headers=HEADERS, timeout=6)
-            if res.status_code == 200:
-                vids = re.findall(r'<yt:videoId>([^<]+)</yt:videoId>', res.text)
-                if vids:
-                    return vids[0]
+            # 1. Ambil daftar video terbaru dari channel
+            url = f"{instance}/api/v1/channels/{channel_id}"
+            res = requests.get(url, headers=HEADERS, timeout=6)
+            if res.status_code != 200:
+                continue
+
+            data = res.json()
+            latest_videos = data.get("latestVideos", [])
+
+            # Cari video yang sedang statusnya 'isLive'
+            live_video_id = None
+            for vid in latest_videos:
+                if vid.get("isLive", False):
+                    live_video_id = vid.get("videoId")
+                    break
+
+            # Jika tidak ada flag isLive, ambil video paling pertama (terbaru)
+            if not live_video_id and latest_videos:
+                live_video_id = latest_videos[0].get("videoId")
+
+            if live_video_id:
+                # 2. Ambil detail HLS m3u8 dari video_id tersebut
+                vid_url = f"{instance}/api/v1/videos/{live_video_id}"
+                vid_res = requests.get(vid_url, headers=HEADERS, timeout=6)
+                if vid_res.status_code == 200:
+                    vid_data = vid_res.json()
+                    if vid_data.get("hlsUrl"):
+                        return vid_data["hlsUrl"]
         except Exception:
-            pass
+            continue
 
-    return None
-
-def extract_m3u8_url(video_id):
-    """Mengambil link m3u8 menggunakan yt-dlp client TV/iOS."""
-    video_url = f"https://www.youtube.com/watch?v={video_id}"
-    cmd = [
-        "yt-dlp",
-        "-g",
-        "-f", "best[ext=mp4]/best",
-        "--extractor-args", "youtube:player_client=ios,tv_embedded",
-        "--no-warnings",
-        video_url
-    ]
-    try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-        out = res.stdout.strip()
-        if out:
-            lines = out.splitlines()
-            for line in lines:
-                if "m3u8" in line or "manifest" in line or "googlevideo.com" in line:
-                    return line
-            return lines[0]
-    except Exception:
-        pass
     return None
 
 def process_target(target):
     if ".m3u8" in target and "youtube.com" not in target:
         return target
-
-    video_id = resolve_target_to_videoid(target)
-    if video_id:
-        return extract_m3u8_url(video_id)
-    return None
+    return get_hls_from_invidious(target)
 
 print("#EXTM3U")
 
