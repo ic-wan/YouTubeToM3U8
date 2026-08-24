@@ -1,27 +1,39 @@
 import sys
-import yt_dlp
+import re
+import requests
+import streamlink
 
-def get_youtube_stream_url(youtube_url):
-    ydl_opts = {
-        'format': 'best',
-        'quiet': True,
-        'no_warnings': True,
-        'extract_flat': False,
-    }
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
+    'Accept-Language': 'en-US,en;q=0.9',
+}
+
+def resolve_youtube_url(url):
+    """Mendapatkan canonical video URL dari channel /live untuk menghindari bot detection."""
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(youtube_url, download=False)
-            
-            # Ambil URL langsung dari hasil ekstraksi yt-dlp
-            if 'url' in info_dict:
-                return info_dict['url']
-            
-            # Alternatif jika format berupa direktori entries (playlist/live)
-            elif 'entries' in info_dict and len(info_dict['entries']) > 0:
-                return info_dict['entries'][0].get('url')
-                
+        res = requests.get(url, headers=HEADERS, timeout=10)
+        if res.status_code == 200:
+            # Cari video ID live dari tag canonical link HTML YouTube
+            match = re.search(r'<link rel="canonical" href="https://www\.youtube\.com/watch\?v=([^"]+)"', res.text)
+            if match:
+                video_id = match.group(1)
+                return f"https://www.youtube.com/watch?v={video_id}"
     except Exception as e:
-        print(f"Error yt_dlp [{youtube_url}]: {e}", file=sys.stderr)
+        print(f"Error resolving {url}: {e}", file=sys.stderr)
+    return url
+
+def get_stream_url(target_url):
+    try:
+        final_url = resolve_youtube_url(target_url)
+        streams = streamlink.streams(final_url)
+        if "best" in streams:
+            return streams["best"].to_url()
+        elif "live" in streams:
+            return streams["live"].to_url()
+        elif "worst" in streams:
+            return streams["worst"].to_url()
+    except Exception as e:
+        print(f"Error Streamlink [{target_url}]: {e}", file=sys.stderr)
     return None
 
 print("#EXTM3U")
@@ -43,14 +55,14 @@ try:
             if i + 1 < len(raw_lines):
                 target_url = raw_lines[i + 1]
                 
-                # Kasus 1: Direct Link M3U8 (Bukan YouTube)
+                # Kasus 1: Direct M3U8 Link
                 if ".m3u8" in target_url and "youtube.com" not in target_url and "youtu.be" not in target_url:
                     print(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{name}" group-title="{group}", {name}')
                     print(target_url)
                 
-                # Kasus 2: Link YouTube Live
+                # Kasus 2: YouTube Link
                 else:
-                    stream_url = get_youtube_stream_url(target_url)
+                    stream_url = get_stream_url(target_url)
                     if stream_url:
                         print(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{name}" group-title="{group}", {name}')
                         print(stream_url)
