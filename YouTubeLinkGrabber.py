@@ -4,11 +4,28 @@ import xml.etree.ElementTree as ET
 import requests
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3.1 Mobile/15E148 Safari/604.1'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept-Language': 'en-US,en;q=0.9'
 }
 
+def get_video_id_from_embed(channel_id):
+    """Mendapatkan Video ID live aktif via YouTube Embed Player (Bypass Bot Check)."""
+    embed_url = f"https://www.youtube.com/embed/live_stream?channel={channel_id}"
+    try:
+        res = requests.get(embed_url, headers=HEADERS, timeout=10)
+        if res.status_code == 200:
+            match = re.search(r'"video_id":"([a-zA-Z0-9_-]{11})"', res.text)
+            if match:
+                return match.group(1)
+            match_canonical = re.search(r'link rel="canonical" href="https://www\.youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})"', res.text)
+            if match_canonical:
+                return match_canonical.group(1)
+    except Exception as e:
+        print(f"Error Embed ID [{channel_id}]: {e}", file=sys.stderr)
+    return None
+
 def get_video_id_from_rss(channel_id):
-    """Mendapatkan Video ID terbaru dari RSS Feed YouTube resmi."""
+    """Fallback RSS Feed resmi jika Embed URL tidak mengembalikan video_id."""
     rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
     try:
         res = requests.get(rss_url, headers=HEADERS, timeout=10)
@@ -17,24 +34,22 @@ def get_video_id_from_rss(channel_id):
             ns = {'yt': 'http://www.youtube.com/xml/xmlns/ns/2015', 'atom': 'http://www.w3.org/2005/Atom'}
             entries = root.findall('atom:entry', ns)
             if entries:
-                # Ambil video_id paling baru di channel
                 yt_vid = entries[0].find('yt:videoId', ns)
                 if yt_vid is not None:
                     return yt_vid.text
-    except Exception as e:
-        print(f"Error RSS {channel_id}: {e}", file=sys.stderr)
+    except Exception:
+        pass
     return None
 
-def get_hls_stream_mweb(video_id):
-    """Mengekstrak HLS manifest menggunakan Client Mobile Web (MWEB) InnerTube API."""
+def get_hls_stream_tv(video_id):
+    """Mengekstrak HLS manifest (.m3u8) menggunakan InnerTube TV Client (Kebal blokir GitHub runner)."""
     api_url = "https://www.youtube.com/youtubei/v1/player"
     payload = {
         "context": {
             "client": {
-                "clientName": "MWEB",
-                "clientVersion": "2.20240425.01.00",
-                "hl": "id",
-                "gl": "ID"
+                "clientName": "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
+                "clientVersion": "2.0",
+                "clientScreen": "WATCH"
             }
         },
         "videoId": video_id
@@ -47,14 +62,8 @@ def get_hls_stream_mweb(video_id):
             hls_url = streaming_data.get("hlsManifestUrl")
             if hls_url:
                 return hls_url
-            
-            # Fallback format jika hlsManifestUrl tidak langsung mengembalikan string
-            formats = streaming_data.get("adaptiveFormats", [])
-            for fmt in formats:
-                if "url" in fmt and ("m3u8" in fmt["url"] or "index.m3u8" in fmt["url"]):
-                    return fmt["url"]
     except Exception as e:
-        print(f"Error InnerTube MWEB [{video_id}]: {e}", file=sys.stderr)
+        print(f"Error InnerTube TV [{video_id}]: {e}", file=sys.stderr)
     return None
 
 def process_target(target):
@@ -63,12 +72,16 @@ def process_target(target):
 
     video_id = None
     if target.startswith("UC"):
-        video_id = get_video_id_from_rss(target)
+        # Prioritas 1: Embed Player
+        video_id = get_video_id_from_embed(target)
+        # Prioritas 2: RSS Feed
+        if not video_id:
+            video_id = get_video_id_from_rss(target)
     elif "watch?v=" in target:
         video_id = target.split("watch?v=")[1].split("&")[0]
 
     if video_id:
-        return get_hls_stream_mweb(video_id)
+        return get_hls_stream_tv(video_id)
 
     return None
 
