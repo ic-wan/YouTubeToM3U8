@@ -1,18 +1,17 @@
 import sys
-import streamlink
+import subprocess
 
-def get_stream_url(youtube_url):
+def extract_with_ytdlp(url):
     try:
-        # Menarik stream langsung dari URL Channel Live
-        streams = streamlink.streams(youtube_url)
-        if "best" in streams:
-            return streams["best"].to_url()
-        elif "live" in streams:
-            return streams["live"].to_url()
-        elif "worst" in streams:
-            return streams["worst"].to_url()
+        # Menjalankan yt-dlp secara langsung via sistem komando Linux
+        cmd = ["yt-dlp", "-g", "-f", "best", url]
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+        if result.returncode == 0:
+            stream_url = result.stdout.strip()
+            if stream_url and "http" in stream_url:
+                return stream_url
     except Exception as e:
-        print(f"Error streamlink [{youtube_url}]: {e}", file=sys.stderr)
+        print(f"Error CLI: {e}", file=sys.stderr)
     return None
 
 print("#EXTM3U")
@@ -34,19 +33,19 @@ try:
             if i + 1 < len(raw_lines):
                 target_url = raw_lines[i + 1]
                 
-                # Kasus 1: Direct Link M3U8
+                # Kasus 1: Link Direct M3U8
                 if ".m3u8" in target_url and "youtube.com" not in target_url and "youtu.be" not in target_url:
                     print(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{name}" group-title="{group}", {name}')
                     print(target_url)
                 
-                # Kasus 2: Link YouTube Live
+                # Kasus 2: Link YouTube
                 else:
-                    stream_url = get_stream_url(target_url)
+                    stream_url = extract_with_ytdlp(target_url)
                     if stream_url:
                         print(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{name}" group-title="{group}", {name}')
                         print(stream_url)
                     else:
-                        print(f"Gagal mengambil stream: {name}", file=sys.stderr)
+                        print(f"Gagal mengambil link: {name}", file=sys.stderr)
                 
                 i += 2
             else:
@@ -55,4 +54,4 @@ try:
             i += 1
 
 except Exception as e:
-    print(f"Error reading youtubeLink.txt: {e}", file=sys.stderr)
+    print(f"Error reading file: {e}", file=sys.stderr)
