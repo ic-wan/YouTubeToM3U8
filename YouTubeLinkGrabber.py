@@ -1,24 +1,17 @@
 import sys
-import re
-import requests
+import streamlink
 
-# Set User-Agent agar tidak terdeteksi sebagai bot
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-}
-
-def get_yt_live_m3u8(yt_url):
+def get_stream_url(youtube_url):
     try:
-        response = requests.get(yt_url, headers=HEADERS, timeout=10)
-        if response.status_code == 200:
-            # Cari hlsManifestUrl di dalam source code HTML YouTube
-            match = re.search(r'(https://manifest\.googlevideo\.com/api/manifest/hls_playlist/[^"]+)', response.text)
-            if match:
-                # Replace unescaped unicode/slashes jika ada
-                stream_url = match.group(1).replace(r'\/', '/')
-                return stream_url
+        # Mengambil stream dari URL YouTube menggunakan streamlink
+        streams = streamlink.streams(youtube_url)
+        # Ambil kualitas terbaik (best) atau hls
+        if "best" in streams:
+            return streams["best"].to_url()
+        elif "live" in streams:
+            return streams["live"].to_url()
     except Exception as e:
-        print(f"Fetch error: {e}", file=sys.stderr)
+        print(f"Error streamlink: {e}", file=sys.stderr)
     return None
 
 print("#EXTM3U")
@@ -40,19 +33,19 @@ try:
             if i + 1 < len(raw_lines):
                 target_url = raw_lines[i + 1]
                 
-                # Kasus 1: Direct Link M3U8
+                # Kasus 1: Direct Link M3U8 (bukan dari YouTube)
                 if ".m3u8" in target_url and "youtube.com" not in target_url and "youtu.be" not in target_url:
                     print(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{name}" group-title="{group}", {name}')
                     print(target_url)
                 
                 # Kasus 2: Link YouTube
                 else:
-                    stream_url = get_yt_live_m3u8(target_url)
+                    stream_url = get_stream_url(target_url)
                     if stream_url:
                         print(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{name}" group-title="{group}", {name}')
                         print(stream_url)
                     else:
-                        print(f"Gagal mengambil stream: {name}", file=sys.stderr)
+                        print(f"Gagal me-extract stream untuk: {name}", file=sys.stderr)
                 
                 i += 2
             else:
