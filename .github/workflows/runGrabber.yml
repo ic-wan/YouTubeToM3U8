@@ -11,22 +11,29 @@ jobs:
   runCode:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Ganti dari 'read' ke 'write' agar bisa git push
+      contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - name: Grab Link
+      - name: Grab Link and Update File
         run: |
           git config --global user.email "dp247@hll.localhost"
           git config --global user.name "dp247"
-          chmod +x exec_grabber.sh && ./exec_grabber.sh
           
-          # Hanya commit dan push jika ada perubahan file
-          if [ -n "$(git status --porcelain)" ]; then
-            git add -A
-            git commit -m "./youtubeLink.txt is updated."
+          # Berikan izin eksekusi dan jalankan skrip
+          chmod +x exec_grabber.sh
+          ./exec_grabber.sh
+          
+          # Tambahkan berkas spesifik secara eksplisit
+          git add youtube.m3u8 youtubeLink.txt 2>/dev/null || git add -A
+          
+          # Cek status perubahan
+          if ! git diff --staged --quiet; then
+            git commit -m "Auto update playlist: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
             git push
+            echo "File berhasil diperbarui dan di-push ke GitHub."
           else
-            echo "Tidak ada perubahan file, skip push."
+            echo "Tidak ada perubahan pada file playlist (Skip push)."
           fi
