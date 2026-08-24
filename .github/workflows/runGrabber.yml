@@ -1,27 +1,46 @@
-import sys
-import yt_dlp
+name: LinkGrabber
 
-# Daftar channel/video live target
-channels = {
-    "TVRI National": "https://www.youtube.com/@TVRINational/live",
-    "Metro TV": "https://www.youtube.com/@metrotvsys/live",
-}
+on:
+  schedule:
+    - cron: '0 */3 * * *'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
 
-ydl_opts = {
-    'quiet': True,
-    'no_warnings': True,
-    'format': 'best',
-}
+jobs:
+  runCode:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
-print("#EXTM3U")
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-for name, url in channels.items():
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            stream_url = info.get('url')
-            if stream_url:
-                print(f'#EXTINF:-1 group-title="Lokal", {name}')
-                print(stream_url)
-    except Exception as e:
-        print(f"Error fetching {name}: {e}", file=sys.stderr)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Grab Link and Update File
+        run: |
+          git config --global user.email "dp247@hll.localhost"
+          git config --global user.name "dp247"
+          
+          chmod +x exec_grabber.sh
+          ./exec_grabber.sh
+          
+          git add -A
+          
+          if [ -n "$(git status --porcelain)" ]; then
+            git commit -m "Auto update playlist: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+            git push
+            echo "File berhasil diperbarui dan di-push."
+          else
+            echo "Tidak ada perubahan file (Skip push)."
+          fi
