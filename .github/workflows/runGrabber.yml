@@ -35,12 +35,13 @@ jobs:
           chmod +x exec_grabber.sh
           ./exec_grabber.sh
           
-          git add youtube.m3u8 youtubeLink.txt 2>/dev/null || git add -A
+          git add youtube.m3u8 youtubeLink.txt 2>/dev/null || true
           
-          if ! git diff --staged --quiet; then
+          # Gunakan git status agar aman dari error exit code 1
+          if [ -n "$(git status --porcelain)" ]; then
             git commit -m "Auto update playlist: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
             git push
             echo "File berhasil diperbarui dan di-push."
           else
-            echo "Tidak ada perubahan pada file playlist (Skip push)."
+            echo "Tidak ada perubahan file (Skip push)."
           fi
