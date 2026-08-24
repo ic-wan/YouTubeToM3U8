@@ -1,9 +1,6 @@
 #!/bin/bash
-python3 -m pip install requests
-python3 -m pip install lxml
-python3 -m pip install pytz
-python3 -m pip install beautifulsoup4
 
+# Jalankan skrip grabber dan simpan outputnya langsung ke youtube.m3u8
 python3 YouTubeLinkGrabber.py > ./youtube.m3u8
 
-echo M3U update complete.
+echo "M3U update complete."
