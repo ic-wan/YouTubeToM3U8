@@ -1,5 +1,5 @@
 pytz
+yt-dlp
 requests
 lxml
-bs4~=0.0.1
-beautifulsoup4~=4.11.2
+beautifulsoup4
