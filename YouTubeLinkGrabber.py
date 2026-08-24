@@ -1,39 +1,26 @@
 import sys
-import re
-import requests
-import streamlink
+import subprocess
 
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
-    'Accept-Language': 'en-US,en;q=0.9',
-}
-
-def resolve_youtube_url(url):
-    """Mendapatkan canonical video URL dari channel /live untuk menghindari bot detection."""
+def get_yt_m3u8(url):
+    cmd = [
+        "yt-dlp",
+        "-g",
+        "-f", "best",
+        "--extractor-args", "youtube:player_client=android,web",
+        "--user-agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
+        url
+    ]
     try:
-        res = requests.get(url, headers=HEADERS, timeout=10)
-        if res.status_code == 200:
-            # Cari video ID live dari tag canonical link HTML YouTube
-            match = re.search(r'<link rel="canonical" href="https://www\.youtube\.com/watch\?v=([^"]+)"', res.text)
-            if match:
-                video_id = match.group(1)
-                return f"https://www.youtube.com/watch?v={video_id}"
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=20)
+        if result.returncode == 0:
+            lines = [l.strip() for l in result.stdout.splitlines() if l.strip()]
+            for line in lines:
+                if "http" in line:
+                    return line
+        else:
+            print(f"yt-dlp error for {url}: {result.stderr.strip()}", file=sys.stderr)
     except Exception as e:
-        print(f"Error resolving {url}: {e}", file=sys.stderr)
-    return url
-
-def get_stream_url(target_url):
-    try:
-        final_url = resolve_youtube_url(target_url)
-        streams = streamlink.streams(final_url)
-        if "best" in streams:
-            return streams["best"].to_url()
-        elif "live" in streams:
-            return streams["live"].to_url()
-        elif "worst" in streams:
-            return streams["worst"].to_url()
-    except Exception as e:
-        print(f"Error Streamlink [{target_url}]: {e}", file=sys.stderr)
+        print(f"Exec error for {url}: {e}", file=sys.stderr)
     return None
 
 print("#EXTM3U")
@@ -62,7 +49,7 @@ try:
                 
                 # Kasus 2: YouTube Link
                 else:
-                    stream_url = get_stream_url(target_url)
+                    stream_url = get_yt_m3u8(target_url)
                     if stream_url:
                         print(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{name}" group-title="{group}", {name}')
                         print(stream_url)
