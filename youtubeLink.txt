@@ -1,25 +1,8 @@
 ## FORMAT: <channel name> || <channel id> || <category>
 
-Tvone live || tvone.yt || News
-https://live.tvonenews.com/live/tvone/index.m3u8
+Tvone2 live || tvone || Indonesia
+https://www.youtube.com/watch?v=VIDEO_ID_TVONE
 
-Tvone2 live || tvone2.yt || News
-UC1yBK9gSc6b0wUGn9v1n8nQ
 
-metroTv live || metrotv.yt || News
-UCyIdd6Yg8qI44t5xHkW3V7g
-
-cnn live || cnn.yt || News
-UCJcT8g3-Z_wX1X22uQpXk0w
-
-kompas Tv live || kompastv.yt || News
-UC6i37B4N4w2A6R8wL2Jm6mA
-
-sindo live || sindo.yt || News
-UCa41f9996X9eE1p5bS2K-pw
-
-inews live || inews.yt || News
-UC8Z_aA4_a5aY5aY5aY5aY5a
-
-kompas live || kompas.yt || News
-UC35j1W-5C2vA85O_eA1h-rQ
+metroTv live || metrotv || Indonesia
+https://www.youtube.com/watch?v=VIDEO_ID_METROTV
