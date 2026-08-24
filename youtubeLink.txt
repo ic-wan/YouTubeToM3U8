@@ -1,7 +1,7 @@
 ## FORMAT: <channel name> || <channel id> || <category>
 
 Tvone2 live || tvone || Indonesia
-https://www.youtube.com/watch?v=VIDEO_ID_LIVE_TVONE
+https://www.youtube.com/watch?v=oq5pIYU-X8Q
 
 metroTv live || metrotv || Indonesia
-https://www.youtube.com/watch?v=VIDEO_ID_LIVE_METROTV
+https://www.youtube.com/watch?v=-CwtcKDaaLA
