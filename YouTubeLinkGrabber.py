@@ -1,41 +1,76 @@
 import sys
 import subprocess
-import json
+import re
+import requests
 
-def get_live_m3u8(target):
-    """Mengambil link HLS m3u8 menggunakan yt-dlp dengan spoofing iOS Client."""
-    if target.startswith("UC"):
-        url = f"https://www.youtube.com/channel/{target}/live"
-    elif "youtube.com" in target or "youtu.be" in target:
-        url = target
-    else:
-        return None
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+}
 
-    # Menggunakan client iOS / Android agar tidak terkena blokir IP Datacenter GitHub
+def get_live_video_id(channel_id):
+    """Mendapatkan Video ID dari tayangan live yang sedang aktif tanpa kena blokir IP."""
+    # Cara 1: Cek halaman embed channel
+    embed_url = f"https://www.youtube.com/embed/live_stream?channel={channel_id}"
+    try:
+        res = requests.get(embed_url, headers=HEADERS, timeout=8)
+        if res.status_code == 200:
+            match = re.search(r'link rel="canonical" href="https://www\.youtube\.com/watch\?v=([^"]+)"', res.text)
+            if match:
+                return match.group(1)
+    except Exception:
+        pass
+
+    # Cara 2: Fallback ke RSS Feed jika cara 1 gagal
+    rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+    try:
+        res = requests.get(rss_url, headers=HEADERS, timeout=8)
+        if res.status_code == 200:
+            matches = re.findall(r'<yt:videoId>([^<]+)</yt:videoId>', res.text)
+            if matches:
+                return matches[0]
+    except Exception:
+        pass
+
+    return None
+
+def extract_m3u8_with_ytdlp(video_id):
+    """Mengekstrak URL .m3u8 dari Video ID menggunakan client tv_embedded / ios."""
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
+    
     cmd = [
         "yt-dlp",
         "--get-url",
-        "-f", "m3u8/best/b",
-        "--extractor-args", "youtube:player_client=ios,android",
+        "-f", "b/bestpass/best",
+        "--extractor-args", "youtube:player_client=tv_embedded,ios",
         "--no-warnings",
         "--geo-bypass",
         "--socket-timeout", "10",
-        url
+        video_url
     ]
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
         output = result.stdout.strip()
         if output and ("m3u8" in output or "manifest" in output):
             return output.splitlines()[0]
-    except Exception as e:
-        print(f"Debug Error ({target}): {e}", file=sys.stderr)
+    except Exception:
+        pass
     return None
 
 def process_target(target):
     if ".m3u8" in target and "youtube.com" not in target:
         return target
-    return get_live_m3u8(target)
+
+    video_id = None
+    if target.startswith("UC"):
+        video_id = get_live_video_id(target)
+    elif "watch?v=" in target:
+        video_id = target.split("watch?v=")[1].split("&")[0]
+
+    if video_id:
+        return extract_m3u8_with_ytdlp(video_id)
+
+    return None
 
 print("#EXTM3U")
 
