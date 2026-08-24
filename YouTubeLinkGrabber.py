@@ -9,18 +9,17 @@ HEADERS = {
 }
 
 def resolve_to_video_id(target):
-    """Mengekstrak Video ID 11 karakter dari berbagai format input."""
     target = target.strip()
     
-    # 1. Jika sudah berupa Video ID 11 karakter
+    # Direct Video ID (11 Karakter)
     if len(target) == 11 and not target.startswith("http") and not target.startswith("UC"):
         return target
         
-    # 2. Jika berupa URL watch YouTube (misal: watch?v=XXXXXXXXXXX)
+    # Standard URL watch?v=
     if "watch?v=" in target:
         return target.split("watch?v=")[1].split("&")[0]
 
-    # 3. Scraping via Embed Page jika berupa Channel ID (UC...) atau Handle (@...)
+    # Handle Channel / Live URL via embed page
     url = ""
     if target.startswith("UC"):
         url = f"https://www.youtube.com/embed/live_stream?channel={target}"
@@ -31,7 +30,7 @@ def resolve_to_video_id(target):
 
     if url:
         try:
-            res = requests.get(url, headers=HEADERS, timeout=8)
+            res = requests.get(url, headers=HEADERS, timeout=10)
             if res.status_code == 200:
                 match = re.search(r'link rel="canonical" href="https://www\.youtube\.com/watch\?v=([^"]+)"', res.text)
                 if match:
@@ -45,13 +44,13 @@ def resolve_to_video_id(target):
     return None
 
 def extract_m3u8_innertube(video_id):
-    """Metode 1: Mengambil stream m3u8 via InnerTube WEB_EMBEDDED API (Cepat & Ringan)."""
+    """Metode 1: High speed InnerTube API"""
     url = "https://www.youtube.com/youtubei/v1/player"
     payload = {
         "context": {
             "client": {
-                "clientName": "WEB_EMBEDDED_PLAYER",
-                "clientVersion": "1.20240815.01.00"
+                "clientName": "ANDROID_VR",
+                "clientVersion": "1.56.21"
             }
         },
         "videoId": video_id
@@ -68,7 +67,7 @@ def extract_m3u8_innertube(video_id):
     return None
 
 def extract_m3u8_ytdlp(video_id):
-    """Metode 2: Fallback ekstrasi via yt-dlp dengan Client TV Embedded."""
+    """Metode 2: Fallback via yt-dlp dengan client tv_embedded"""
     video_url = f"https://www.youtube.com/watch?v={video_id}"
     cmd = [
         "yt-dlp",
@@ -80,7 +79,7 @@ def extract_m3u8_ytdlp(video_id):
         video_url
     ]
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=12)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
         out = res.stdout.strip()
         if out and ("m3u8" in out or "googlevideo.com" in out):
             return out.splitlines()[0]
@@ -94,10 +93,8 @@ def process_target(target):
 
     video_id = resolve_to_video_id(target)
     if video_id:
-        # Coba via API cepat terlebih dahulu
         stream_url = extract_m3u8_innertube(video_id)
         if not stream_url:
-            # Fallback ke yt-dlp jika API menolak
             stream_url = extract_m3u8_ytdlp(video_id)
         return stream_url
 
