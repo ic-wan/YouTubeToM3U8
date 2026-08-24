@@ -1,30 +1,25 @@
 ## FORMAT: <channel name> || <channel id> || <category>
-## <channel name> can be anything - either stream or channel name. It will appear on the EPG though.
-## <channel id> is used to match EPG data to the M3U8 playlist, so make it short and with no spaces. End it in '.yt' to show its from YouTube.
-## <category> is used to group streams, so something like 'Music' or 'News' is recommended.
-
 
 Tvone live || tvone.yt || News
 https://live.tvonenews.com/live/tvone/index.m3u8
 
 Tvone2 live || tvone2.yt || News
-https://www.youtube.com/watch?v=rQJoEpzKkNk
+https://www.youtube.com/@tvOneNews/live
 
 metroTv live || metrotv.yt || News
-https://www.youtube.com/watch?v=hjNOqYN6UJo
+https://www.youtube.com/@metrotvsys/live
 
 cnn live || cnn.yt || News
-https://www.youtube.com/watch?v=PDDOkUq33Sw
+https://www.youtube.com/@CNNindonesiaOfficial/live
 
 kompas Tv live || kompastv.yt || News
-https://www.youtube.com/watch?v=-FeEigkpROg
+https://www.youtube.com/@KompasTV/live
 
 sindo live || sindo.yt || News
-https://www.youtube.com/watch?v=L5tT1vvWhrg
+https://www.youtube.com/@sindonewstv/live
 
 inews live || inews.yt || News
-https://www.youtube.com/watch?v=WHTPYAvakTg
+https://www.youtube.com/@officialinewstv/live
 
 kompas live || kompas.yt || News
-https://www.youtube.com/watch?v=DOOrIxw5xOw
-
+https://www.youtube.com/@Kompascom/live
