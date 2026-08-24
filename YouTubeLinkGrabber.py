@@ -1,29 +1,52 @@
 import sys
-import subprocess
 import re
+import json
 import requests
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+    'Accept-Language': 'en-US,en;q=0.9'
 }
 
+INVIDIOUS_INSTANCES = [
+    "https://inv.hostux.net",
+    "https://invidious.nerdvpn.de",
+    "https://yewtu.be",
+    "https://invidious.drgns.space"
+]
+
 def get_live_video_id(channel_id):
-    """Mendapatkan Video ID dari tayangan live yang sedang aktif tanpa kena blokir IP."""
-    # Cara 1: Cek halaman embed channel
-    embed_url = f"https://www.youtube.com/embed/live_stream?channel={channel_id}"
+    """Mencari Video ID live dari Channel ID menggunakan beberapa metode bypass."""
+    
+    # 1. Cek via Invidious API (Tahan blokir IP GitHub)
+    for instance in INVIDIOUS_INSTANCES:
+        try:
+            url = f"{instance}/api/v1/channels/{channel_id}"
+            res = requests.get(url, headers=HEADERS, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                # Cari video yang statusnya live
+                for video in data.get('latestVideos', []):
+                    if video.get('isLive', False):
+                        return video.get('videoId')
+        except Exception:
+            continue
+
+    # 2. Cek via Canonical Embed YouTube
     try:
-        res = requests.get(embed_url, headers=HEADERS, timeout=8)
+        embed_url = f"https://www.youtube.com/embed/live_stream?channel={channel_id}"
+        res = requests.get(embed_url, headers=HEADERS, timeout=5)
         if res.status_code == 200:
             match = re.search(r'link rel="canonical" href="https://www\.youtube\.com/watch\?v=([^"]+)"', res.text)
-            if match:
+            if match and match.group(1) != channel_id:
                 return match.group(1)
     except Exception:
         pass
 
-    # Cara 2: Fallback ke RSS Feed jika cara 1 gagal
-    rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+    # 3. Cek via RSS Feed
     try:
-        res = requests.get(rss_url, headers=HEADERS, timeout=8)
+        rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+        res = requests.get(rss_url, headers=HEADERS, timeout=5)
         if res.status_code == 200:
             matches = re.findall(r'<yt:videoId>([^<]+)</yt:videoId>', res.text)
             if matches:
@@ -33,28 +56,43 @@ def get_live_video_id(channel_id):
 
     return None
 
-def extract_m3u8_with_ytdlp(video_id):
-    """Mengekstrak URL .m3u8 dari Video ID menggunakan client tv_embedded / ios."""
-    video_url = f"https://www.youtube.com/watch?v={video_id}"
-    
-    cmd = [
-        "yt-dlp",
-        "--get-url",
-        "-f", "b/bestpass/best",
-        "--extractor-args", "youtube:player_client=tv_embedded,ios",
-        "--no-warnings",
-        "--geo-bypass",
-        "--socket-timeout", "10",
-        video_url
-    ]
-
+def get_hls_from_innertube(video_id):
+    """Mengambil langsung URL .m3u8 via YouTube InnerTube API (No yt-dlp dependency)."""
+    url = "https://www.youtube.com/youtubei/v1/player"
+    payload = {
+        "context": {
+            "client": {
+                "clientName": "WEB_EMBEDDED_PLAYER",
+                "clientVersion": "1.20240815.01.00"
+            }
+        },
+        "videoId": video_id
+    }
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-        output = result.stdout.strip()
-        if output and ("m3u8" in output or "manifest" in output):
-            return output.splitlines()[0]
+        res = requests.post(url, json=payload, headers=HEADERS, timeout=8)
+        if res.status_code == 200:
+            data = res.json()
+            streaming_data = data.get("streamingData", {})
+            hls_manifest = streaming_data.get("hlsManifestUrl")
+            if hls_manifest:
+                return hls_manifest
     except Exception:
         pass
+    return None
+
+def get_hls_from_invidious(video_id):
+    """Fallback alternatif mengambil m3u8 dari Invidious API jika YouTube API menolak IP."""
+    for instance in INVIDIOUS_INSTANCES:
+        try:
+            url = f"{instance}/api/v1/videos/{video_id}"
+            res = requests.get(url, headers=HEADERS, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                hls_url = data.get("hlsUrl")
+                if hls_url:
+                    return hls_url
+        except Exception:
+            continue
     return None
 
 def process_target(target):
@@ -66,9 +104,16 @@ def process_target(target):
         video_id = get_live_video_id(target)
     elif "watch?v=" in target:
         video_id = target.split("watch?v=")[1].split("&")[0]
+    elif len(target) == 11 and not target.startswith("http"):
+        video_id = target
 
     if video_id:
-        return extract_m3u8_with_ytdlp(video_id)
+        # Coba ambil via InnerTube API dulu
+        m3u8_url = get_hls_from_innertube(video_id)
+        if not m3u8_url:
+            # Fallback ke Invidious API
+            m3u8_url = get_hls_from_invidious(video_id)
+        return m3u8_url
 
     return None
 
