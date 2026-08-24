@@ -19,7 +19,7 @@ def resolve_to_video_id(target):
     if "watch?v=" in target:
         return target.split("watch?v=")[1].split("&")[0]
 
-    # Handle Channel / Live URL via embed page
+    # Scrape Video ID dari Embed Page
     url = ""
     if target.startswith("UC"):
         url = f"https://www.youtube.com/embed/live_stream?channel={target}"
@@ -44,7 +44,7 @@ def resolve_to_video_id(target):
     return None
 
 def extract_m3u8_innertube(video_id):
-    """Metode 1: High speed InnerTube API"""
+    """Metode 1: High-speed InnerTube API (Bypass Client Protection)"""
     url = "https://www.youtube.com/youtubei/v1/player"
     payload = {
         "context": {
@@ -67,7 +67,7 @@ def extract_m3u8_innertube(video_id):
     return None
 
 def extract_m3u8_ytdlp(video_id):
-    """Metode 2: Fallback via yt-dlp dengan client tv_embedded"""
+    """Metode 2: Fallback via yt-dlp menggunakan client tv_embedded"""
     video_url = f"https://www.youtube.com/watch?v={video_id}"
     cmd = [
         "yt-dlp",
