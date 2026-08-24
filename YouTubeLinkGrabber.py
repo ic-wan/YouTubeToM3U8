@@ -1,31 +1,21 @@
 import sys
-import re
 import xml.etree.ElementTree as ET
 import requests
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept-Language': 'en-US,en;q=0.9'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 }
 
-def get_video_id_from_embed(channel_id):
-    """Mendapatkan Video ID live aktif via YouTube Embed Player (Bypass Bot Check)."""
-    embed_url = f"https://www.youtube.com/embed/live_stream?channel={channel_id}"
-    try:
-        res = requests.get(embed_url, headers=HEADERS, timeout=10)
-        if res.status_code == 200:
-            match = re.search(r'"video_id":"([a-zA-Z0-9_-]{11})"', res.text)
-            if match:
-                return match.group(1)
-            match_canonical = re.search(r'link rel="canonical" href="https://www\.youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})"', res.text)
-            if match_canonical:
-                return match_canonical.group(1)
-    except Exception as e:
-        print(f"Error Embed ID [{channel_id}]: {e}", file=sys.stderr)
-    return None
+# Daftar instance Invidious publik yang stabil
+INVIDIOUS_INSTANCES = [
+    "https://inv.tux.pizza",
+    "https://invidious.nerdvpn.de",
+    "https://vid.puffyan.us",
+    "https://invidious.flokinet.to"
+]
 
 def get_video_id_from_rss(channel_id):
-    """Fallback RSS Feed resmi jika Embed URL tidak mengembalikan video_id."""
+    """Mendapatkan Video ID terbaru via RSS Feed YouTube."""
     rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
     try:
         res = requests.get(rss_url, headers=HEADERS, timeout=10)
@@ -41,29 +31,26 @@ def get_video_id_from_rss(channel_id):
         pass
     return None
 
-def get_hls_stream_tv(video_id):
-    """Mengekstrak HLS manifest (.m3u8) menggunakan InnerTube TV Client (Kebal blokir GitHub runner)."""
-    api_url = "https://www.youtube.com/youtubei/v1/player"
-    payload = {
-        "context": {
-            "client": {
-                "clientName": "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
-                "clientVersion": "2.0",
-                "clientScreen": "WATCH"
-            }
-        },
-        "videoId": video_id
-    }
-    try:
-        res = requests.post(api_url, json=payload, headers=HEADERS, timeout=10)
-        if res.status_code == 200:
-            data = res.json()
-            streaming_data = data.get("streamingData", {})
-            hls_url = streaming_data.get("hlsManifestUrl")
-            if hls_url:
-                return hls_url
-    except Exception as e:
-        print(f"Error InnerTube TV [{video_id}]: {e}", file=sys.stderr)
+def get_hls_from_invidious(video_id):
+    """Mengambil link stream m3u8 langsung via Invidious API."""
+    for instance in INVIDIOUS_INSTANCES:
+        try:
+            api_url = f"{instance}/api/v1/videos/{video_id}"
+            res = requests.get(api_url, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                # Coba ambil HLS Manifest URL
+                hls_url = data.get("hlsUrl")
+                if hls_url:
+                    return hls_url
+                
+                # Alternate: cari format adaptive yang mengandung m3u8
+                adaptive = data.get("adaptiveFormats", [])
+                for fmt in adaptive:
+                    if "type" in fmt and "m3u8" in fmt["type"]:
+                        return fmt.get("url")
+        except Exception:
+            continue
     return None
 
 def process_target(target):
@@ -72,16 +59,12 @@ def process_target(target):
 
     video_id = None
     if target.startswith("UC"):
-        # Prioritas 1: Embed Player
-        video_id = get_video_id_from_embed(target)
-        # Prioritas 2: RSS Feed
-        if not video_id:
-            video_id = get_video_id_from_rss(target)
+        video_id = get_video_id_from_rss(target)
     elif "watch?v=" in target:
         video_id = target.split("watch?v=")[1].split("&")[0]
 
     if video_id:
-        return get_hls_stream_tv(video_id)
+        return get_hls_from_invidious(video_id)
 
     return None
 
