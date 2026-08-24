@@ -4,4 +4,4 @@
 python3 -m pip install -U yt-dlp requests
 
 # Jalankan skrip grabber
-python3 YouTubeLinkGrabber.py > playlist.m3u
+python3 YouTubeLinkGrabber.py > youtube.m3u
