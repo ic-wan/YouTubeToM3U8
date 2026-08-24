@@ -1,13 +1,9 @@
 import sys
 import subprocess
-import requests
-
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-}
+import json
 
 def get_live_m3u8(target):
-    """Menggunakan yt-dlp untuk mengekstrak URL manifest m3u8 dari YouTube Channel/Video."""
+    """Mengambil link HLS m3u8 menggunakan yt-dlp dengan spoofing iOS Client."""
     if target.startswith("UC"):
         url = f"https://www.youtube.com/channel/{target}/live"
     elif "youtube.com" in target or "youtu.be" in target:
@@ -15,29 +11,30 @@ def get_live_m3u8(target):
     else:
         return None
 
+    # Menggunakan client iOS / Android agar tidak terkena blokir IP Datacenter GitHub
     cmd = [
         "yt-dlp",
         "--get-url",
-        "-f", "b/best",
+        "-f", "m3u8/best/b",
+        "--extractor-args", "youtube:player_client=ios,android",
         "--no-warnings",
         "--geo-bypass",
+        "--socket-timeout", "10",
         url
     ]
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
         output = result.stdout.strip()
         if output and ("m3u8" in output or "manifest" in output):
             return output.splitlines()[0]
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Debug Error ({target}): {e}", file=sys.stderr)
     return None
 
 def process_target(target):
-    # Jika masukan sudah berupa link stream m3u8 langsung
     if ".m3u8" in target and "youtube.com" not in target:
         return target
-
     return get_live_m3u8(target)
 
 print("#EXTM3U")
