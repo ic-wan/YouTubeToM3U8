@@ -9,23 +9,24 @@ HEADERS = {
 }
 
 def resolve_to_video_id(target):
+    """Mengekstrak Video ID (11 karakter) dari berbagai format URL YouTube."""
     target = target.strip()
     
-    # Direct Video ID (11 Karakter)
     if len(target) == 11 and not target.startswith("http") and not target.startswith("UC"):
         return target
         
-    # Standard URL watch?v=
     if "watch?v=" in target:
         return target.split("watch?v=")[1].split("&")[0]
 
-    # Scrape Video ID dari Embed Page
+    if "youtu.be/" in target:
+        return target.split("youtu.be/")[1].split("?")[0]
+
     url = ""
     if target.startswith("UC"):
         url = f"https://www.youtube.com/embed/live_stream?channel={target}"
     elif target.startswith("@"):
         url = f"https://www.youtube.com/{target}/live"
-    elif "youtube.com" in target or "youtu.be" in target:
+    elif "youtube.com" in target:
         url = target
 
     if url:
@@ -44,7 +45,7 @@ def resolve_to_video_id(target):
     return None
 
 def extract_m3u8_innertube(video_id):
-    """Metode 1: High-speed InnerTube API (Bypass Client Protection)"""
+    """Metode 1: InnerTube API cepat untuk Live Stream."""
     url = "https://www.youtube.com/youtubei/v1/player"
     payload = {
         "context": {
@@ -66,11 +67,12 @@ def extract_m3u8_innertube(video_id):
         pass
     return None
 
-def extract_m3u8_ytdlp(video_id):
-    """Metode 2: Fallback via yt-dlp menggunakan client tv_embedded"""
+def extract_with_ytdlp(video_id):
+    """Metode 2: Fallback yt-dlp untuk mengambil Judul dan Stream URL."""
     video_url = f"https://www.youtube.com/watch?v={video_id}"
     cmd = [
         "yt-dlp",
+        "--print", "%(title)s",
         "-g",
         "-f", "m3u8/best/b",
         "--extractor-args", "youtube:player_client=tv_embedded,ios",
@@ -79,27 +81,37 @@ def extract_m3u8_ytdlp(video_id):
         video_url
     ]
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-        out = res.stdout.strip()
-        if out and ("m3u8" in out or "googlevideo.com" in out):
-            return out.splitlines()[0]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+        lines = [line.strip() for line in res.stdout.strip().splitlines() if line.strip()]
+        if len(lines) >= 2:
+            title = lines[0]
+            stream_url = lines[1]
+            return title, stream_url
+        elif len(lines) == 1:
+            return None, lines[0]
     except Exception:
         pass
-    return None
+    return None, None
 
 def process_target(target):
+    """Memproses target URL direct m3u8 atau link YouTube."""
     if ".m3u8" in target and "youtube.com" not in target:
-        return target
+        return None, target
 
     video_id = resolve_to_video_id(target)
     if video_id:
+        # Coba ekstrak live m3u8 via InnerTube lebih dulu (sangat cepat)
         stream_url = extract_m3u8_innertube(video_id)
-        if not stream_url:
-            stream_url = extract_m3u8_ytdlp(video_id)
-        return stream_url
+        if stream_url:
+            return None, stream_url
+        
+        # Fallback ke yt-dlp (mendapatkan judul asli & link stream)
+        title, stream_url = extract_with_ytdlp(video_id)
+        return title, stream_url
 
-    return None
+    return None, None
 
+# Output Header M3U
 print("#EXTM3U")
 
 try:
@@ -110,18 +122,22 @@ try:
     while i < len(raw_lines):
         line = raw_lines[i]
         
+        # Opsi 1: Format 2 baris (Metadata Header + URL)
         if "||" in line:
             parts = [p.strip() for p in line.split("||")]
-            name = parts[0] if len(parts) > 0 else "Live TV"
-            tvg_id = parts[1] if len(parts) > 1 else "tv.live"
-            group = parts[2] if len(parts) > 2 else "General"
+            name = parts[0] if len(parts) > 0 else "YouTube Stream"
+            tvg_id = parts[1] if len(parts) > 1 else "yt.stream"
+            group = parts[2] if len(parts) > 2 else "Music"
             
             if i + 1 < len(raw_lines):
                 target_entry = raw_lines[i + 1]
-                stream_url = process_target(target_entry)
+                auto_title, stream_url = process_target(target_entry)
+                
+                # Gunakan judul dari yt-dlp jika nama header default/kosong
+                display_name = auto_title if (auto_title and name == "YouTube Stream") else name
                 
                 if stream_url:
-                    print(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{name}" group-title="{group}", {name}')
+                    print(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{display_name}" group-title="{group}", {display_name}')
                     print(stream_url)
                 else:
                     print(f"Gagal mengambil stream: {name}", file=sys.stderr)
@@ -129,6 +145,17 @@ try:
                 i += 2
             else:
                 i += 1
+
+        # Opsi 2: Baris Tunggal Berisi URL YouTube Langsung (Otomatis Ambil Judul & Kategori)
+        elif "youtube.com" in line or "youtu.be" in line:
+            auto_title, stream_url = process_target(line)
+            if stream_url:
+                title = auto_title if auto_title else "YouTube Track"
+                print(f'#EXTINF:-1 tvg-id="yt.music" tvg-name="{title}" group-title="Musik", {title}')
+                print(stream_url)
+            else:
+                print(f"Gagal mengambil stream: {line}", file=sys.stderr)
+            i += 1
         else:
             i += 1
 
