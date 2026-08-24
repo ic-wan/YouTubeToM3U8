@@ -1,78 +1,128 @@
 import sys
+import json
+import subprocess
 import requests
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+    'Accept': 'application/json'
 }
 
-# Daftar instance Invidious publik sebagai mirror YouTube
+# Mirror API publik yang stabil di runner CI/CD
+PIPED_INSTANCES = [
+    "https://pipedapi.kavin.rocks",
+    "https://api.piped.privacydev.net",
+    "https://pipedapi.mha.fi",
+    "https://piped-api.garudalinux.org"
+]
+
 INVIDIOUS_INSTANCES = [
     "https://inv.tux.pizza",
     "https://invidious.nerdvpn.de",
-    "https://inv.hostux.net",
-    "https://yewtu.be",
-    "https://invidious.drgns.space"
+    "https://yewtu.be"
 ]
 
-def get_hls_from_invidious(target):
-    """Mengambil m3u8 stream dari Invidious API untuk menghindari IP block GitHub Actions."""
-    channel_id = target.strip()
-    
-    # Resolusi jika input berupa URL watch
-    if "watch?v=" in target:
-        video_id = target.split("watch?v=")[1].split("&")[0]
-        for instance in INVIDIOUS_INSTANCES:
-            try:
-                url = f"{instance}/api/v1/videos/{video_id}"
-                res = requests.get(url, headers=HEADERS, timeout=6)
-                if res.status_code == 200:
-                    data = res.json()
-                    if data.get("hlsUrl"):
-                        return data["hlsUrl"]
-            except Exception:
-                continue
-        return None
-
-    # Jika target berupa Channel ID (UC...) atau Handle (@...)
-    for instance in INVIDIOUS_INSTANCES:
+def get_hls_via_piped(target):
+    """Mencari stream HLS via Piped API."""
+    for instance in PIPED_INSTANCES:
         try:
-            # 1. Ambil daftar video terbaru dari channel
-            url = f"{instance}/api/v1/channels/{channel_id}"
-            res = requests.get(url, headers=HEADERS, timeout=6)
-            if res.status_code != 200:
-                continue
+            # 1. Ambil video live dari channel
+            url = f"{instance}/channel/{target}"
+            res = requests.get(url, headers=HEADERS, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                related = data.get("relatedStreams", [])
+                live_video_id = None
+                for vid in related:
+                    if vid.get("isStream", False) or vid.get("type") == "stream":
+                        live_video_id = vid.get("url", "").replace("/watch?v=", "")
+                        break
+                
+                if not live_video_id and related:
+                    live_video_id = related[0].get("url", "").replace("/watch?v=", "")
 
-            data = res.json()
-            latest_videos = data.get("latestVideos", [])
-
-            # Cari video yang sedang statusnya 'isLive'
-            live_video_id = None
-            for vid in latest_videos:
-                if vid.get("isLive", False):
-                    live_video_id = vid.get("videoId")
-                    break
-
-            # Jika tidak ada flag isLive, ambil video paling pertama (terbaru)
-            if not live_video_id and latest_videos:
-                live_video_id = latest_videos[0].get("videoId")
-
-            if live_video_id:
-                # 2. Ambil detail HLS m3u8 dari video_id tersebut
-                vid_url = f"{instance}/api/v1/videos/{live_video_id}"
-                vid_res = requests.get(vid_url, headers=HEADERS, timeout=6)
-                if vid_res.status_code == 200:
-                    vid_data = vid_res.json()
-                    if vid_data.get("hlsUrl"):
-                        return vid_data["hlsUrl"]
+                if live_video_id:
+                    # 2. Ambil Stream HLS (m3u8)
+                    stream_res = requests.get(f"{instance}/streams/{live_video_id}", headers=HEADERS, timeout=5)
+                    if stream_res.status_code == 200:
+                        stream_data = stream_res.json()
+                        hls_url = stream_data.get("hls")
+                        if hls_url:
+                            return hls_url
         except Exception:
             continue
+    return None
 
+def get_hls_via_invidious(target):
+    """Fallback ke Invidious API."""
+    for instance in INVIDIOUS_INSTANCES:
+        try:
+            url = f"{instance}/api/v1/channels/{target}"
+            res = requests.get(url, headers=HEADERS, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                videos = data.get("latestVideos", [])
+                video_id = None
+                for v in videos:
+                    if v.get("isLive"):
+                        video_id = v.get("videoId")
+                        break
+                if not video_id and videos:
+                    video_id = videos[0].get("videoId")
+                
+                if video_id:
+                    v_res = requests.get(f"{instance}/api/v1/videos/{video_id}", headers=HEADERS, timeout=5)
+                    if v_res.status_code == 200:
+                        v_data = v_res.json()
+                        if v_data.get("hlsUrl"):
+                            return v_data.get("hlsUrl")
+        except Exception:
+            continue
+    return None
+
+def get_hls_via_ytdlp(target):
+    """Fallback akhir menggunakan yt-dlp android player client."""
+    url = target
+    if target.startswith("UC") or target.startswith("@"):
+        url = f"https://www.youtube.com/{target if target.startswith('@') else 'channel/' + target}/live"
+
+    cmd = [
+        "yt-dlp",
+        "-g",
+        "-f", "b/bestpass/best",
+        "--extractor-args", "youtube:player_client=android,ios",
+        "--no-warnings",
+        url
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=12)
+        out = res.stdout.strip()
+        if out and ("m3u8" in out or "googlevideo.com" in out):
+            return out.splitlines()[0]
+    except Exception:
+        pass
     return None
 
 def process_target(target):
     if ".m3u8" in target and "youtube.com" not in target:
         return target
-    return get_hls_from_invidious(target)
+
+    # Tier 1: Piped API
+    url = get_hls_via_piped(target)
+    if url:
+        return url
+
+    # Tier 2: Invidious API
+    url = get_hls_via_invidious(target)
+    if url:
+        return url
+
+    # Tier 3: Direct yt-dlp
+    url = get_hls_via_ytdlp(target)
+    if url:
+        return url
+
+    return None
 
 print("#EXTM3U")
 
