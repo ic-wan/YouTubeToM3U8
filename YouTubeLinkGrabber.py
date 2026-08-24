@@ -8,19 +8,19 @@ HEADERS = {
     'Accept-Language': 'en-US,en;q=0.9'
 }
 
-def get_live_videoid_from_target(target):
-    """Mengubah Channel ID / Handle / URL menjadi Video ID 11 karakter."""
+def resolve_to_video_id(target):
+    """Mengekstrak Video ID 11 karakter dari berbagai format input."""
     target = target.strip()
     
     # 1. Jika sudah berupa Video ID 11 karakter
     if len(target) == 11 and not target.startswith("http") and not target.startswith("UC"):
         return target
         
-    # 2. Jika berupa URL watch YouTube
+    # 2. Jika berupa URL watch YouTube (misal: watch?v=XXXXXXXXXXX)
     if "watch?v=" in target:
         return target.split("watch?v=")[1].split("&")[0]
 
-    # 3. Parsing Embed Stream HTML (Lolos bot filter IP datacenter)
+    # 3. Scraping via Embed Page jika berupa Channel ID (UC...) atau Handle (@...)
     url = ""
     if target.startswith("UC"):
         url = f"https://www.youtube.com/embed/live_stream?channel={target}"
@@ -33,48 +33,54 @@ def get_live_videoid_from_target(target):
         try:
             res = requests.get(url, headers=HEADERS, timeout=8)
             if res.status_code == 200:
-                # Cari tag canonical link
                 match = re.search(r'link rel="canonical" href="https://www\.youtube\.com/watch\?v=([^"]+)"', res.text)
                 if match:
                     return match.group(1)
-                # Cari pattern videoId di JSON tersemat
                 match_json = re.search(r'"videoId":"([a-zA-Z0-9_-]{11})"', res.text)
                 if match_json:
                     return match_json.group(1)
         except Exception:
             pass
 
-    # 4. Fallback RSS feed jika Channel ID
-    if target.startswith("UC"):
-        try:
-            rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={target}"
-            res = requests.get(rss_url, headers=HEADERS, timeout=8)
-            if res.status_code == 200:
-                matches = re.findall(r'<yt:videoId>([^<]+)</yt:videoId>', res.text)
-                if matches:
-                    return matches[0]
-        except Exception:
-            pass
-
     return None
 
-def extract_hls_stream(video_id):
-    """Mengekstrak URL stream m3u8 via yt-dlp client tv_embedded."""
+def extract_m3u8_innertube(video_id):
+    """Metode 1: Mengambil stream m3u8 via InnerTube WEB_EMBEDDED API (Cepat & Ringan)."""
+    url = "https://www.youtube.com/youtubei/v1/player"
+    payload = {
+        "context": {
+            "client": {
+                "clientName": "WEB_EMBEDDED_PLAYER",
+                "clientVersion": "1.20240815.01.00"
+            }
+        },
+        "videoId": video_id
+    }
+    try:
+        res = requests.post(url, json=payload, headers=HEADERS, timeout=8)
+        if res.status_code == 200:
+            data = res.json()
+            hls_url = data.get("streamingData", {}).get("hlsManifestUrl")
+            if hls_url:
+                return hls_url
+    except Exception:
+        pass
+    return None
+
+def extract_m3u8_ytdlp(video_id):
+    """Metode 2: Fallback ekstrasi via yt-dlp dengan Client TV Embedded."""
     video_url = f"https://www.youtube.com/watch?v={video_id}"
-    
     cmd = [
         "yt-dlp",
         "-g",
         "-f", "m3u8/best/b",
-        "--extractor-args", "youtube:player_client=tv_embedded,ios,web_embedded",
+        "--extractor-args", "youtube:player_client=tv_embedded,ios",
         "--no-warnings",
-        "--geo-bypass",
         "--socket-timeout", "10",
         video_url
     ]
-    
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=12)
         out = res.stdout.strip()
         if out and ("m3u8" in out or "googlevideo.com" in out):
             return out.splitlines()[0]
@@ -86,10 +92,15 @@ def process_target(target):
     if ".m3u8" in target and "youtube.com" not in target:
         return target
 
-    video_id = get_live_videoid_from_target(target)
+    video_id = resolve_to_video_id(target)
     if video_id:
-        return extract_hls_stream(video_id)
-        
+        # Coba via API cepat terlebih dahulu
+        stream_url = extract_m3u8_innertube(video_id)
+        if not stream_url:
+            # Fallback ke yt-dlp jika API menolak
+            stream_url = extract_m3u8_ytdlp(video_id)
+        return stream_url
+
     return None
 
 print("#EXTM3U")
