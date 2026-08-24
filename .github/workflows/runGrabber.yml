@@ -1,11 +1,10 @@
 import sys
 import yt_dlp
 
-# Daftar channel/video live yang ingin di-grab
+# Daftar channel/video live target
 channels = {
     "TVRI National": "https://www.youtube.com/@TVRINational/live",
     "Metro TV": "https://www.youtube.com/@metrotvsys/live",
-    # Tambahkan channel lain di sini: "Nama Channel": "URL Live"
 }
 
 ydl_opts = {
@@ -14,7 +13,7 @@ ydl_opts = {
     'format': 'best',
 }
 
-m3u_lines = ["#EXTM3U"]
+print("#EXTM3U")
 
 for name, url in channels.items():
     try:
@@ -22,11 +21,7 @@ for name, url in channels.items():
             info = ydl.extract_info(url, download=False)
             stream_url = info.get('url')
             if stream_url:
-                m3u_lines.append(f'#EXTINF:-1 group-title="Lokal", {name}')
-                m3u_lines.append(stream_url)
+                print(f'#EXTINF:-1 group-title="Lokal", {name}')
+                print(stream_url)
     except Exception as e:
-        # Jika gagal/offline, cetak error ke log stderr tanpa merusak format M3U
         print(f"Error fetching {name}: {e}", file=sys.stderr)
-
-# Cetak hasil ke stdout agar ditangkap oleh exec_grabber.sh (> ./youtube.m3u8)
-print("\n".join(m3u_lines))
