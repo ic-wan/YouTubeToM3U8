@@ -3,15 +3,16 @@ import streamlink
 
 def get_stream_url(youtube_url):
     try:
-        # Mengambil stream dari URL YouTube menggunakan streamlink
+        # Menarik stream langsung dari URL Channel Live
         streams = streamlink.streams(youtube_url)
-        # Ambil kualitas terbaik (best) atau hls
         if "best" in streams:
             return streams["best"].to_url()
         elif "live" in streams:
             return streams["live"].to_url()
+        elif "worst" in streams:
+            return streams["worst"].to_url()
     except Exception as e:
-        print(f"Error streamlink: {e}", file=sys.stderr)
+        print(f"Error streamlink [{youtube_url}]: {e}", file=sys.stderr)
     return None
 
 print("#EXTM3U")
@@ -33,19 +34,19 @@ try:
             if i + 1 < len(raw_lines):
                 target_url = raw_lines[i + 1]
                 
-                # Kasus 1: Direct Link M3U8 (bukan dari YouTube)
+                # Kasus 1: Direct Link M3U8
                 if ".m3u8" in target_url and "youtube.com" not in target_url and "youtu.be" not in target_url:
                     print(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{name}" group-title="{group}", {name}')
                     print(target_url)
                 
-                # Kasus 2: Link YouTube
+                # Kasus 2: Link YouTube Live
                 else:
                     stream_url = get_stream_url(target_url)
                     if stream_url:
                         print(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-name="{name}" group-title="{group}", {name}')
                         print(stream_url)
                     else:
-                        print(f"Gagal me-extract stream untuk: {name}", file=sys.stderr)
+                        print(f"Gagal mengambil stream: {name}", file=sys.stderr)
                 
                 i += 2
             else:
